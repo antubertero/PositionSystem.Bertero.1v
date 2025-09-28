@@ -1,0 +1,291 @@
+openapi: 3.0.3
+info:
+  title: Sistema General de Control de Personal
+  version: 1.0.0
+  description: >-
+    API REST para el Sistema General de Control de Personal en Tiempo Real.
+servers:
+  - url: http://localhost:8080
+    description: Backend Node
+  - url: http://localhost:8081
+    description: Backend Go de referencia
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    PresenceEvent:
+      type: object
+      required: [id, person_id, ts, source, type, payload]
+      properties:
+        id:
+          type: string
+          format: uuid
+        person_id:
+          oneOf:
+            - type: string
+            - type: integer
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+          enum: [mobile, kiosk, biometric, task, calendar, panic]
+        type:
+          type: string
+          enum: [entry, exit, checkin, checkout, assigned, completed, panic, geo_enter, geo_exit]
+        payload:
+          type: object
+          additionalProperties: true
+      example:
+        id: 11111111-1111-4111-8111-111111111111
+        person_id: 1
+        ts: 2024-01-01T08:00:00Z
+        source: biometric
+        type: entry
+        payload:
+          device: kiosk-01
+    StatusSnapshot:
+      type: object
+      required: [person_id, status, ts, source, reason]
+      properties:
+        person_id:
+          oneOf:
+            - type: string
+            - type: integer
+        status:
+          type: string
+          enum: [OFF_SHIFT, ON_SHIFT, AVAILABLE, BUSY, BREAK, ABSENT, TRAINING, ESCALATED, EMERGENCY]
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        reason:
+          type: string
+      example:
+        person_id: 1
+        status: ON_SHIFT
+        ts: 2024-01-01T08:00:01Z
+        source: BIOMETRIC
+        reason: Entrada biométrica
+paths:
+  /auth/login:
+    post:
+      summary: Autenticación básica
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+            example:
+              username: operador
+              password: secreto
+      responses:
+        '200':
+          description: Token JWT
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        '401':
+          description: Credenciales inválidas
+  /people:
+    get:
+      summary: Listar personas
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: unit
+          schema:
+            type: string
+        - in: query
+          name: role
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Personas filtradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    role:
+                      type: string
+                    hierarchy:
+                      type: string
+                    specialty:
+                      type: string
+                    unit:
+                      type: string
+    post:
+      summary: Crear persona
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role]
+              properties:
+                name:
+                  type: string
+                role:
+                  type: string
+                hierarchy:
+                  type: string
+                specialty:
+                  type: string
+                unit:
+                  type: string
+            example:
+              name: Ana Supervisora
+              role: Supervisor
+              hierarchy: Senior
+              specialty: Guardia
+              unit: Emergencias
+      responses:
+        '201':
+          description: Persona creada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+  /events/presence:
+    post:
+      summary: Registrar evento de presencia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresenceEvent'
+      responses:
+        '202':
+          description: Evento procesado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/StatusSnapshot'
+        '400':
+          description: Error de validación
+  /status/now:
+    get:
+      summary: Obtener snapshot actual
+      parameters:
+        - in: query
+          name: unit
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Estado por persona
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusSnapshot'
+  /status/history:
+    get:
+      summary: Historial de estado
+      parameters:
+        - in: query
+          name: person_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Historial
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusSnapshot'
+  /alerts/test:
+    post:
+      summary: Probar alertas
+      responses:
+        '200':
+          description: Alerta simulada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+  /reports/kpi:
+    get:
+      summary: KPIs operativos
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: KPIs agrupados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  absenteeism:
+                    type: number
+                  utilization:
+                    type: number
+                  sla:
+                    type: number
+                  coverage:
+                    type: number
