@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  OWNER: ${{ github.repository_owner }}
+  REPO: ${{ github.event.repository.name || 'control-personal' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Build backend image
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker build -t ghcr.io/${{ env.OWNER }}/${{ env.REPO }}-backend:latest backend-node
+          docker push ghcr.io/${{ env.OWNER }}/${{ env.REPO }}-backend:latest
+      - name: Build frontend image
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker build -t ghcr.io/${{ env.OWNER }}/${{ env.REPO }}-frontend:latest app
+          docker push ghcr.io/${{ env.OWNER }}/${{ env.REPO }}-frontend:latest
+      - name: Run Node tests
+        run: |
+          cd backend-node
+          npm install
+          npm test
+      - name: Run Go tests
+        run: |
+          cd backend-go
+          go test ./...
